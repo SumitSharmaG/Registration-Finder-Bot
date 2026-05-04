@@ -100,4 +100,3 @@ def handle_msg(message):
 if __name__ == "__main__":
     keep_alive() # Starts Flask server for Render
     bot.polling(none_stop=True)
-    
