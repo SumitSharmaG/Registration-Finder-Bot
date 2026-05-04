@@ -1,32 +1,35 @@
-import os, telebot, cloudscraper, urllib3, requests
+import os, telebot, cloudscraper, urllib3
 from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 
-# --- RENDER PORT BINDING ---
+# --- RENDER PORT LOGIC ---
 app = Flask('')
 @app.route('/')
-def home(): return "Proxy Bypass Bot is Running!"
+def home(): return "Bot is Active & Logging!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- CORE LOGIC ---
+# --- BOT SETUP ---
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 bot = telebot.TeleBot(os.environ.get('BOT_TOKEN'))
 
+DATA_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
+
 def get_msbu_data(name):
-    # Cloudscraper logic with custom browser fingerprint
+    print(f"\n>>> [LOG] 1. New Request Received for Name: {name}")
+    
+    # Cloudscraper creates a browser-like session
     scraper = cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'android', 'desktop': False}
+        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
     )
     
-    url = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
     headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://msbuexam.org/StSticTCntAlL/FindForm.php",
-        "X-Requested-With": "XMLHttpRequest",
-        "Origin": "https://msbuexam.org"
+        "X-Requested-With": "XMLHttpRequest"
     }
     
     payload = {
@@ -35,53 +38,60 @@ def get_msbu_data(name):
     }
 
     try:
-        # Pehle bina proxy ke koshish (Mobile Fingerprint ke saath)
-        response = scraper.post(url, data=payload, headers=headers, timeout=20)
+        print(">>> [LOG] 2. Sending POST request to MSBU Server...")
         
-        # Agar Cloudflare block karega toh hum ek public proxy try karenge
-        if "cloudflare" in response.text.lower() or response.status_code == 403:
-            print(">>> [LOG] Blocked by CF. Trying Public Proxy...")
-            
-            # Ye ek demo proxy hai (Bhai, ye kabhi bhi dead ho sakti hai)
-            # Aap 'https://www.sslproxies.org/' se naya IP lekar yahan badal sakte ho
-            test_proxy = "http://160.86.242.23:8080" 
-            proxies = {"http": test_proxy, "https": test_proxy}
-            
-            response = scraper.post(url, data=payload, headers=headers, proxies=proxies, timeout=20)
+        # Yahan humne ek working proxy daalne ki jagah rakhi hai
+        # Agar block hota hai toh yahan proxy add karni hogi
+        response = scraper.post(DATA_URL, data=payload, headers=headers, timeout=25)
+        
+        print(f">>> [LOG] 3. Response Received. Status Code: {response.status_code}")
+        print(f">>> [LOG] 4. HTML Data Length: {len(response.text)} characters")
+
+        # Check for Cloudflare challenge
+        if "cloudflare" in response.text.lower() or "Attention Required" in response.text:
+            print(">>> [LOG] ALERT: Blocked by Cloudflare Firewall!")
+            return "CF_BLOCKED"
             
         return response.text
-    except Exception as e:
-        return f"ERROR: {str(e)}"
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "🚀 **MSBU Ultimate Bypass Bot**\n\nStudent ka naam bhejein. Main Cloudflare aur IP block se ladne ki koshish karunga!")
+    except Exception as e:
+        print(f">>> [LOG] ERROR: Request failed due to: {str(e)}")
+        return None
 
 @bot.message_handler(func=lambda message: True)
 def handle_msg(message):
     search_name = message.text
-    sent_msg = bot.reply_to(message, "🛡️ **Security Bypass in Progress...**")
+    print(f"\n>>> [LOG] User {message.from_user.first_name} is searching: {search_name}")
+    
+    sent_msg = bot.reply_to(message, "🔎 Website se data nikaal raha hoon... (Checking Logs)")
     
     html = get_msbu_data(search_name)
     
-    if not html or "cloudflare" in html.lower():
-        bot.edit_message_text("🚫 **Still Blocked:** Cloudflare ne Render ka pura network block kar rakha hai. Render ki Settings mein jaakar **Region change** karein (Singapore ya Frankfurt).", message.chat.id, sent_msg.message_id)
-        return
-
-    soup = BeautifulSoup(html, 'html.parser')
-    table = soup.find('table')
-    
-    if table:
-        rows = table.find_all('tr')
-        res = f"✅ **Records for {search_name}:**\n\n"
-        for row in rows[1:]:
-            cols = row.find_all('td')
-            if len(cols) >= 3:
-                res += f"🆔 `{cols[0].text.strip()}` | 👤 {cols[1].text.strip()}\n"
-        bot.edit_message_text(res, message.chat.id, sent_msg.message_id)
+    if html == "CF_BLOCKED":
+        bot.edit_message_text("🚫 **Cloudflare Block:** Render ka IP block hai. Please Render ki settings mein jaakar **Region Change** karein.", message.chat.id, sent_msg.message_id)
+    elif html:
+        print(">>> [LOG] 5. Parsing HTML content...")
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+        
+        if table:
+            rows = table.find_all('tr')
+            print(f">>> [LOG] 6. Success! Found {len(rows)-1} records.")
+            
+            res = f"✅ **Records for {search_name}:**\n\n"
+            for row in rows[1:]:
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    res += f"📝 **Form:** `{cols[0].text.strip()}`\n👤 **Name:** {cols[1].text.strip()}\n👨‍💼 **Father:** {cols[2].text.strip()}\n━━━━━━━━━━━━\n"
+            bot.edit_message_text(res, message.chat.id, sent_msg.message_id, parse_mode='Markdown')
+        else:
+            print(">>> [LOG] 6. Table NOT found in response. Possible 'No Record Found'.")
+            bot.edit_message_text(f"❌ `{search_name}` ka koi record nahi mila.", message.chat.id, sent_msg.message_id)
     else:
-        bot.edit_message_text("❌ Record nahi mila ya site down hai.", message.chat.id, sent_msg.message_id)
+        bot.edit_message_text("❌ Connection Error. Logs check karein.", message.chat.id, sent_msg.message_id)
 
 if __name__ == "__main__":
     Thread(target=run).start()
+    print(">>> [LOG] Bot is now Polling... Ready for messages.")
     bot.polling(none_stop=True)
+    
