@@ -1,5 +1,5 @@
 pyTelegramBotAPI
-requests
+cloudscraper
 beautifulsoup4
 flask
 gunicorn
