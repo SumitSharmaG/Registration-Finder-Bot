@@ -1,102 +1,96 @@
-import os, telebot, requests, urllib3
+import os, telebot, cloudscraper, urllib3
 from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 
-# --- RENDER KEEP-ALIVE (Do not touch) ---
+# Render Keep-Alive
 app = Flask('')
 @app.route('/')
-def home(): return "Bot is Active!"
+def home(): return "Bot is Online with IST Bypass!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
-# ----------------------------------------
+    Thread(target=run).start()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 bot = telebot.TeleBot(os.environ.get('BOT_TOKEN'))
-URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
+
+# --- ASLI ENDPOINT JAHAN DATA HAI ---
+# Code mein dekha: fatchformno.php hi data deti hai
+DATA_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
+REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
 def get_msbu_data(name):
-    session = requests.Session()
-    # Website ko lagega ki asli Chrome browser se request aa rahi hai
+    # Cloudscraper to bypass Cloudflare
+    scraper = cloudscraper.create_scraper(
+        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
+    )
+    
+    # Headers mein India ka Timezone mimic karna zaroori hai
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": REFERER_URL,
         "Origin": "https://msbuexam.org",
-        "Referer": "https://msbuexam.org/StSticTCntAlL/FindForm.php",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
+        "X-Requested-With": "XMLHttpRequest" # Website ko lagega AJAX request hai
     }
+    
     try:
-        # Step 1: Pehle page par ja kar session/cookies activate karna
-        session.get(URL, headers=headers, verify=False, timeout=15)
-        
-        # Step 2: Data maangna (Multiple results handle karne ke liye)
+        # Website ke form fields ke naam code se uthaye hain: Sname, Fname, Mob, uid etc.
         payload = {
-            'candidateName': name,
-            'fatherName': '',
-            'submit': 'Search'
+            'Sname': name,
+            'Fname': '',
+            'Mname': '',
+            'Mob': '',
+            'uid': '',
+            'abc': '',
+            'fno': '',
+            'tzone': '5.5', # YE SABSE ZAROORI HAI (IST Bypass)
+            'finfom': 'Proceed'
         }
         
-        # Thoda gap de kar request bhejna (Insaan ki tarah)
-        response = session.post(URL, data=payload, headers=headers, verify=False, timeout=25)
+        response = scraper.post(DATA_URL, data=payload, headers=headers, timeout=25)
         return response.text
-    except Exception as e:
-        print(f"Error: {e}")
+    except:
         return None
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "🎯 **MSBU Registration Finder Updated!**\n\nBas Student ka Name bhejein, main sab details nikaal loonga.")
+    bot.reply_to(message, "🚀 **MSBU Multi-Search Bot Active!**\n\nBas Candidate ka Name bhejein.")
 
 @bot.message_handler(func=lambda message: True)
 def handle_msg(message):
     search_name = message.text
-    sent_msg = bot.reply_to(message, f"🔍 `{search_name}` dhoond raha hoon, thoda sabr rakhein...")
+    sent_msg = bot.reply_to(message, f"🔎 Searching for `{search_name}` (IST Bypass Mode)...")
     
-    html = get_msbu_data(search_name)
-    if not html:
-        bot.edit_message_text("❌ Website server respond nahi kar raha.", message.chat.id, sent_msg.message_id)
+    html_res = get_msbu_data(search_name)
+    
+    if not html_res:
+        bot.edit_message_text("❌ Website ne response nahi diya.", message.chat.id, sent_msg.message_id)
         return
 
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    # MSBU Table ko dhoondne ka naya tarika
-    table = soup.find('table')
-    
-    if table:
-        rows = table.find_all('tr')
-        if len(rows) > 1:
-            results = f"✅ **Found {len(rows)-1} Records:**\n\n"
-            for row in rows[1:]:
+    # Response seedha table ya text ho sakta hai
+    if "📝" in html_res or "Form" in html_res or "table" in html_res.lower():
+        # BeautifulSoup use karke table parse karein
+        soup = BeautifulSoup(html_res, 'html.parser')
+        rows = soup.find_all('tr')
+        
+        if rows:
+            res_msg = "✅ **Found Records:**\n\n"
+            for row in rows:
                 cols = row.find_all('td')
                 if len(cols) >= 3:
-                    results += (
-                        f"📝 **Form:** `{cols[0].text.strip()}`\n"
-                        f"👤 **Name:** {cols[1].text.strip()}\n"
-                        f"👨‍💼 **Father:** {cols[2].text.strip()}\n"
-                        f"━━━━━━━━━━━━\n"
-                    )
-                if len(results) > 3500: # Message length safety
-                    results += "\n⚠️ *List lambi hai, kuch results chhut gaye.*"
-                    break
-            bot.edit_message_text(results, message.chat.id, sent_msg.message_id, parse_mode='Markdown')
+                    res_msg += f"🆔 `{cols[0].text.strip()}` | 👤 {cols[1].text.strip()}\n"
+            bot.edit_message_text(res_msg, message.chat.id, sent_msg.message_id)
         else:
-            bot.edit_message_text(f"❌ `{search_name}` naam se koi data nahi mila.", message.chat.id, sent_msg.message_id)
+            # Agar table nahi hai toh raw text bhej do (Jo fatchformno.php bhej rahi hai)
+            bot.edit_message_text(f"✅ **Results:**\n\n{html_res}", message.chat.id, sent_msg.message_id)
     else:
-        # Agar block hue toh ye message aayega
-        if "Forbidden" in html or "403" in html:
-            bot.edit_message_text("🚫 Site ne block kar diya (403). Thodi der baad try karein.", message.chat.id, sent_msg.message_id)
-        else:
-            bot.edit_message_text("⚠️ Data nahi mil raha. Shayad naam galat hai ya site busy hai.", message.chat.id, sent_msg.message_id)
+        bot.edit_message_text("❌ Is naam ka koi record nahi mila.", message.chat.id, sent_msg.message_id)
 
 if __name__ == "__main__":
-    keep_alive() # Starts Flask server for Render
+    keep_alive()
     bot.polling(none_stop=True)
+            
