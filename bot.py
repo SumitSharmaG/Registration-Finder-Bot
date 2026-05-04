@@ -104,3 +104,4 @@ if __name__ == "__main__":
     keep_alive()  # Start Flask
     print("Bot is starting...")
     bot.polling(none_stop=True)
+    
