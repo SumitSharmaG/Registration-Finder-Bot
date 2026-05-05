@@ -1,99 +1,162 @@
-import os, telebot, cloudscraper, urllib3, time
+import os
+import time
+import random
+import telebot
+import cloudscraper
+import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 
-# --- RENDER PORT BINDING ---
-app = Flask('')
-@app.route('/')
-def home(): return "Bot is Online & Accepting Cookies!"
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ---------------- FLASK (KEEP ALIVE) ----------------
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is live"
 
 def run():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
-# --- BOT SETUP ---
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-bot = telebot.TeleBot(os.environ.get('BOT_TOKEN'))
+def keep_alive():
+    Thread(target=run, daemon=True).start()
 
-# Conflict 409 Fix
-try:
-    bot.remove_webhook()
-    time.sleep(1)
-except: pass
+# ---------------- BOT ----------------
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN env variable missing")
 
-MAIN_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
+
 DATA_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
+REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
-def get_msbu_data(name):
-    # Ek session create kar rahe hain jo COOKIES yaad rakhega
+# Optional: single proxy from env (use only if you have permission)
+# Format: http://user:pass@host:port  OR http://host:port
+PROXY_URL = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+
+def build_scraper():
     scraper = cloudscraper.create_scraper(
-        browser={'browser': 'chrome','platform': 'windows','desktop': True}
+        browser={"browser": "chrome", "platform": "windows", "desktop": True}
     )
-    
-    print(f"\n>>> [LOG] STEP 1: Visiting Main Page to accept Cookies...")
-    try:
-        # Pehle main page par ja kar cookies accept karte hain
-        init_res = scraper.get(MAIN_URL, timeout=15)
-        print(f">>> [LOG] Cookies Accepted: {scraper.cookies.get_dict()}")
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Referer": MAIN_URL,
-            "X-Requested-With": "XMLHttpRequest",
-            "Origin": "https://msbuexam.org"
+    if PROXY_URL:
+        scraper.proxies = {
+            "http": PROXY_URL,
+            "https": PROXY_URL
         }
-        
-        payload = {
-            'Sname': name, 'Fname': '', 'Mname': '', 'Mob': '',
-            'uid': '', 'abc': '', 'fno': '', 'tzone': '5.5', 'finfom': 'Proceed'
-        }
-        
-        print(f">>> [LOG] STEP 2: Sending Search for: {name}")
-        response = scraper.post(DATA_URL, data=payload, headers=headers, timeout=25)
-        
-        print(f">>> [LOG] STEP 3: Status: {response.status_code}, Length: {len(response.text)}")
-        
-        if "cloudflare" in response.text.lower() or "blocked" in response.text.lower():
-            print(">>> [LOG] !!! Cloudflare Detected despite cookies")
-            return "CF_BLOCK"
-            
-        return response.text
+    return scraper
 
-    except Exception as e:
-        print(f">>> [LOG] !!! ERROR: {str(e)}")
-        return None
+def fetch_once(scraper, name: str):
+    # 1) Warm-up request to get cookies/session
+    scraper.get(REFERER_URL, timeout=20)
 
-@bot.message_handler(func=lambda message: True)
-def handle_msg(message):
-    search_name = message.text
-    print(f"\n>>> [LOG] USER {message.chat.id} triggered search.")
-    
-    sent_msg = bot.reply_to(message, "🍪 Accepting cookies & fetching data...")
-    
-    html = get_msbu_data(search_name)
-    
-    if html == "CF_BLOCK":
-        bot.edit_message_text("🚫 Cloudflare is still blocking the IP. Check Render Logs!", message.chat.id, sent_msg.message_id)
-    elif html:
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
-        if table:
-            rows = table.find_all('tr')
-            print(f">>> [LOG] SUCCESS: Found {len(rows)-1} records.")
-            res = f"✅ **Results for {search_name}:**\n\n"
-            for row in rows[1:]:
-                cols = row.find_all('td')
-                if len(cols) >= 3:
-                    res += f"📝 **Form:** `{cols[0].text.strip()}`\n👤 **Name:** {cols[1].text.strip()}\n👨‍💼 **Father:** {cols[2].text.strip()}\n━━━━━━━━━━━━\n"
-            bot.edit_message_text(res, message.chat.id, sent_msg.message_id)
-        else:
-            print(">>> [LOG] No table found. Website might have returned an empty response.")
-            bot.edit_message_text(f"❌ `{search_name}` ka data nahi mila.", message.chat.id, sent_msg.message_id)
-    else:
-        bot.edit_message_text("❌ Request failed. Server issue.", message.chat.id, sent_msg.message_id)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": REFERER_URL,
+        "Origin": "https://msbuexam.org",
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+    }
 
+    payload = {
+        "Sname": name,
+        "Fname": "",
+        "Mname": "",
+        "Mob": "",
+        "uid": "",
+        "abc": "",
+        "fno": "",
+        "tzone": "5.5",
+        "finfom": "Proceed",
+    }
+
+    resp = scraper.post(DATA_URL, data=payload, headers=headers, timeout=25)
+    return resp
+
+def get_msbu_data(name: str, max_retries: int = 3):
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            scraper = build_scraper()
+            resp = fetch_once(scraper, name)
+
+            if resp.status_code == 200 and resp.text:
+                return resp.text
+
+            last_err = f"HTTP {resp.status_code}"
+        except Exception as e:
+            last_err = str(e)
+
+        # backoff with jitter
+        sleep_s = min(10, 2 ** attempt) + random.uniform(0.2, 1.0)
+        time.sleep(sleep_s)
+
+    print("Failed after retries:", last_err)
+    return None
+
+def parse_result(html: str, query_name: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    rows = soup.find_all("tr")
+
+    if rows:
+        out = f"*Results for {query_name}:*\n\n"
+        count = 0
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) >= 3:
+                out += (
+                    f"📑 *Form:* `{cols[0].text.strip()}`\n"
+                    f"👤 *Name:* {cols[1].text.strip()}\n"
+                    f"👨‍👦 *Father:* {cols[2].text.strip()}\n"
+                    f"──────────────\n"
+                )
+                count += 1
+                if len(out) > 3800:
+                    break
+
+        if count == 0:
+            clean = soup.get_text().strip()
+            return f"No structured rows.\n\n{clean[:3500]}"
+        return out
+
+    clean = soup.get_text().strip()
+    return f"No records found.\n\n{clean[:3500]}"
+
+# ---------------- HANDLERS ----------------
+@bot.message_handler(commands=["start"])
+def start(msg):
+    bot.reply_to(
+        msg,
+        "MSBU Finder Bot ready.\n\nStudent ka *name* bhejo."
+    )
+
+@bot.message_handler(func=lambda m: True)
+def handle(m):
+    name = (m.text or "").strip()
+    if not name:
+        bot.reply_to(m, "Please valid name bhejo.")
+        return
+
+    sent = bot.reply_to(m, f"🔎 Searching `{name}` ...")
+
+    html = get_msbu_data(name)
+    if not html:
+        bot.edit_message_text(
+            "❌ Data fetch nahi ho paya (blocked / network issue).",
+            m.chat.id,
+            sent.message_id
+        )
+        return
+
+    result = parse_result(html, name)
+    bot.edit_message_text(result, m.chat.id, sent.message_id)
+
+# ---------------- RUN ----------------
 if __name__ == "__main__":
-    Thread(target=run).start()
-    print(">>> [LOG] Bot is starting...")
-    bot.polling(none_stop=True)
+    keep_alive()
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
