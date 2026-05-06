@@ -1,5 +1,4 @@
-pyTelegramBotAPI==4.18.1
-cloudscraper==1.2.71
-beautifulsoup4==4.12.3
-flask==3.0.3
-gunicorn
+python-telegram-bot==22.7   — Telegram bot framework
+requests==2.33.1            — Website se data fetch karne ke liye
+beautifulsoup4==4.13.4      — HTML parse karne ke liye
+lxml==6.1.0                 — Fast HTML parser
