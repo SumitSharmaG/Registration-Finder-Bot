@@ -1,4 +1,4 @@
-python-telegram-bot==22.7   — Telegram bot framework
-requests==2.33.1            — Website se data fetch karne ke liye
-beautifulsoup4==4.13.4      — HTML parse karne ke liye
-lxml==6.1.0                 — Fast HTML parser
+python-telegram-bot==22.7
+requests==2.33.1
+beautifulsoup4==4.13.4
+lxml==6.1.0
