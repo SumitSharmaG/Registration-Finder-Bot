@@ -34,7 +34,7 @@ def run_web_server():
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kgIU12yVvCtw"
+TOKEN = "8777189359:AAGez2ogQBGlnf_I9Di7I16q3qCNF2UXhLs"
 SEARCH_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
 REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
