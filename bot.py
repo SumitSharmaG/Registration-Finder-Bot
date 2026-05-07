@@ -20,21 +20,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Config
-TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kgIU12yVvCtw" # Screenshot wala token
+TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kgIU12yVvCtw"
 SEARCH_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
 REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
 # States
 CHOOSE_SEARCH, ENTER_VALUE, ENTER_FATHER = range(3)
 
-# Headers (Enhanced for Cloudflare bypass)
+# Headers
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "Content-Type": "application/x-www-form-urlencoded",
     "Origin": "https://msbuexam.org",
     "Referer": REFERER_URL,
-    "Upgrade-Insecure-Requests": "1",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
 }
 
@@ -49,7 +48,7 @@ KEYBOARD = [[key] for key in SEARCH_OPTIONS.keys()]
 
 def fetch_results(payload: dict) -> str:
     try:
-        # Cloudscraper cloudflare security bypass karne mein help karega
+        # Browser simulation to bypass 403 Forbidden
         scraper = cloudscraper.create_scraper(browser={'browser': 'firefox', 'platform': 'windows', 'mobile': False})
         resp = scraper.post(SEARCH_URL, data=payload, headers=HEADERS, timeout=25)
         resp.raise_for_status()
@@ -82,7 +81,7 @@ def parse_html_table(html: str):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = ReplyKeyboardMarkup(KEYBOARD, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
-        "🎓 *MSBU Exam — Form Finder*\n\nEk search option choose karein:",
+        "🎓 *MSBU Exam — Form Finder*\n\nNiche diye gaye options mein se ek choose karein:",
         parse_mode="Markdown",
         reply_markup=reply_markup,
     )
@@ -97,7 +96,7 @@ async def choose_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data["search_type"] = search_type
 
     prompts = {
-        "name": "✏️ *Candidate Name* likhein:",
+        "name": "✏️ *Candidate ka pura naam* likhein:",
         "mobile": "📱 *10-digit Mobile Number* likhein:",
         "aadhar": "🪪 *12-digit Aadhar Number* likhein:",
         "abc": "🎓 *12-digit ABC ID* likhein:",
@@ -107,7 +106,7 @@ async def choose_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def enter_father(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["candidate_name"] = update.message.text.strip()
-    await update.message.reply_text("✏️ *Father's Name* enter karein (Nahi pata toh `-` type karein):", parse_mode="Markdown")
+    await update.message.reply_text("✏️ *Father's Name* enter karein (Skip ke liye `-` type karein):", parse_mode="Markdown")
     return ENTER_VALUE
 
 async def enter_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -129,12 +128,12 @@ async def enter_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     html = fetch_results(payload)
     
     if not html:
-        await update.message.reply_text("❌ Error: Website ne request block kar di. /start")
+        await update.message.reply_text("❌ Website block error. Server IP change karein ya thodi der baad try karein. /start")
         return ConversationHandler.END
 
     results = parse_html_table(html)
     if not results:
-        await update.message.reply_text("⚠️ No Record Found! Check details and /start again.")
+        await update.message.reply_text("⚠️ Koi record nahi mila. Details check karke /start karein.")
     else:
         for entry in results:
             await update.message.reply_text(entry, parse_mode="Markdown")
@@ -142,23 +141,28 @@ async def enter_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Search cancelled. /start", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Process cancel ho gaya. /start", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            CHOOSE_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_search)],
-            ENTER_FATHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_father)],
-            ENTER_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_value)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-    app.add_handler(conv_handler)
-    logger.info("Bot is active...")
-    app.run_polling()
+    try:
+        app = Application.builder().token(TOKEN).build()
+        
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                CHOOSE_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_search)],
+                ENTER_FATHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_father)],
+                ENTER_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_value)],
+            },
+            fallbacks=[CommandHandler("cancel", cancel)],
+        )
+        
+        app.add_handler(conv_handler)
+        logger.info("Bot is starting...")
+        app.run_polling(drop_pending_updates=True)
+    except Exception as e:
+        logger.error(f"Startup Error: {e}")
 
 if __name__ == "__main__":
     main()
