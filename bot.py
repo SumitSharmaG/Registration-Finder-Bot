@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Config
-TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kgIU12yVvCtw"
+TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kqIUi2yVvCtw"
 SEARCH_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
 REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
