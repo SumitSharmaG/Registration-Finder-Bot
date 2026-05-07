@@ -168,7 +168,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main() -> None:
     # Aapka Bot Token yahan integrate kar diya gaya hai
-    TOKEN = "8622326096:AAECFSk40cSj06_T1zzyHEzufYXbO-2xnKA"
+    TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kqIUi2yVvCtw"
     
     app = Application.builder().token(TOKEN).build()
 
