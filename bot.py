@@ -1,6 +1,6 @@
 import os
 import logging
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -12,27 +12,30 @@ from telegram.ext import (
     filters,
 )
 
-# Logging setup
+# Logging Setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# States
-CHOOSE_SEARCH, ENTER_VALUE, ENTER_FATHER = range(3)
-
-# URLs & Headers
+# Config
+TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kgIU12yVvCtw" # Screenshot wala token
 SEARCH_URL = "https://msbuexam.org/StSticTCntAlL/fatchformno.php"
 REFERER_URL = "https://msbuexam.org/StSticTCntAlL/FindForm.php"
 
+# States
+CHOOSE_SEARCH, ENTER_VALUE, ENTER_FATHER = range(3)
+
+# Headers (Enhanced for Cloudflare bypass)
 HEADERS = {
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "Referer": REFERER_URL,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Content-Type": "application/x-www-form-urlencoded",
     "Origin": "https://msbuexam.org",
-    "X-Requested-With": "XMLHttpRequest",
-    "Accept": "*/*",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": REFERER_URL,
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
 }
 
 SEARCH_OPTIONS = {
@@ -44,14 +47,15 @@ SEARCH_OPTIONS = {
 
 KEYBOARD = [[key] for key in SEARCH_OPTIONS.keys()]
 
-# Helper Functions
 def fetch_results(payload: dict) -> str:
     try:
-        resp = requests.post(SEARCH_URL, data=payload, headers=HEADERS, timeout=20)
+        # Cloudscraper cloudflare security bypass karne mein help karega
+        scraper = cloudscraper.create_scraper(browser={'browser': 'firefox', 'platform': 'windows', 'mobile': False})
+        resp = scraper.post(SEARCH_URL, data=payload, headers=HEADERS, timeout=25)
         resp.raise_for_status()
         return resp.text
-    except requests.RequestException as e:
-        logger.error(f"Request failed: {e}")
+    except Exception as e:
+        logger.error(f"Fetch Error: {e}")
         return None
 
 def parse_html_table(html: str):
@@ -64,28 +68,21 @@ def parse_html_table(html: str):
     if len(rows) <= 1:
         return None
 
-    # Getting column headers (S.No, Form No, Name, etc.)
     headers = [th.get_text(strip=True) for th in rows[0].find_all(["td", "th"])]
-    
     entries = []
     for row in rows[1:]:
         cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if not cells:
-            continue
-        # Zip headers and cells for clear output
+        if not cells: continue
         entry_text = ""
         for h, c in zip(headers, cells):
             entry_text += f"• *{h}:* `{c}`\n"
         entries.append(entry_text)
-    
     return entries
 
-# Handler Functions
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = ReplyKeyboardMarkup(KEYBOARD, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
-        "🎓 *MSBU Exam Portal — Form Finder*\n\n"
-        "Apna application number search karne ke liye niche diye gaye options mein se ek choose karein:",
+        "🎓 *MSBU Exam — Form Finder*\n\nEk search option choose karein:",
         parse_mode="Markdown",
         reply_markup=reply_markup,
     )
@@ -94,84 +91,62 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def choose_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     choice = update.message.text
     if choice not in SEARCH_OPTIONS:
-        await update.message.reply_text("❌ Please button ka use karke option select karein.")
         return CHOOSE_SEARCH
 
     search_type = SEARCH_OPTIONS[choice]
     context.user_data["search_type"] = search_type
 
     prompts = {
-        "name": "✏️ *Candidate ka pura naam* enter karein:",
-        "mobile": "📱 *10-digit mobile number* enter karein:",
-        "aadhar": "🪪 *12-digit Aadhar number* enter karein:",
-        "abc": "🎓 *12-digit ABC ID* enter karein:",
+        "name": "✏️ *Candidate Name* likhein:",
+        "mobile": "📱 *10-digit Mobile Number* likhein:",
+        "aadhar": "🪪 *12-digit Aadhar Number* likhein:",
+        "abc": "🎓 *12-digit ABC ID* likhein:",
     }
-
-    await update.message.reply_text(
-        prompts[search_type],
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-
+    await update.message.reply_text(prompts[search_type], parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
     return ENTER_FATHER if search_type == "name" else ENTER_VALUE
 
 async def enter_father(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["candidate_name"] = update.message.text.strip()
-    await update.message.reply_text(
-        "✏️ *Father's Name* enter karein (Skip karne ke liye `-` type karein):",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("✏️ *Father's Name* enter karein (Nahi pata toh `-` type karein):", parse_mode="Markdown")
     return ENTER_VALUE
 
 async def enter_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     search_type = context.user_data.get("search_type")
     value = update.message.text.strip()
-    
     payload = {"Sname": "", "Fname": "", "Mname": "", "Mob": "", "uid": "", "abc": "", "finfom": "Proceed"}
 
     if search_type == "name":
         payload["Sname"] = context.user_data.get("candidate_name", "")
         payload["Fname"] = "" if value == "-" else value
     elif search_type == "mobile":
-        if len(value) != 10 or not value.isdigit():
-            await update.message.reply_text("❌ Galat mobile number! 10 digits enter karein.")
-            return ENTER_VALUE
         payload["Mob"] = value
-    elif search_type in ["aadhar", "abc"]:
-        if len(value) != 12 or not value.isdigit():
-            await update.message.reply_text(f"❌ Galat ID! 12 digits enter karein.")
-            return ENTER_VALUE
-        if search_type == "aadhar": payload["uid"] = value
-        else: payload["abc"] = value
+    elif search_type == "aadhar":
+        payload["uid"] = value
+    elif search_type == "abc":
+        payload["abc"] = value
 
-    await update.message.reply_text("🔍 Search jari hai, kripya pratiksha karein...")
-    
+    await update.message.reply_text("🔍 Searching... Please wait.")
     html = fetch_results(payload)
+    
     if not html:
-        await update.message.reply_text("❌ Server se response nahi mila. Dobara try karein. /start")
+        await update.message.reply_text("❌ Error: Website ne request block kar di. /start")
         return ConversationHandler.END
 
     results = parse_html_table(html)
     if not results:
-        await update.message.reply_text("⚠️ *No Record Found!* Details check karke /start karein.", parse_mode="Markdown")
-        return ConversationHandler.END
-
-    await update.message.reply_text(f"✅ *{len(results)} record(s) mile:*", parse_mode="Markdown")
-    for entry in results:
-        await update.message.reply_text(entry, parse_mode="Markdown")
+        await update.message.reply_text("⚠️ No Record Found! Check details and /start again.")
+    else:
+        for entry in results:
+            await update.message.reply_text(entry, parse_mode="Markdown")
 
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("❌ Search cancel kar diya gaya. /start", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Search cancelled. /start", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-def main() -> None:
-    # Aapka Bot Token yahan integrate kar diya gaya hai
-    TOKEN = "8777189359:AAE3okN8Bfwf4P7umF_kku0kqIUi2yVvCtw"
-    
+def main():
     app = Application.builder().token(TOKEN).build()
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -181,9 +156,8 @@ def main() -> None:
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
-
     app.add_handler(conv_handler)
-    logger.info("Bot is running...")
+    logger.info("Bot is active...")
     app.run_polling()
 
 if __name__ == "__main__":
