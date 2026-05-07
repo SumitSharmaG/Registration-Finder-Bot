@@ -64,7 +64,7 @@ def fetch_results(payload: dict) -> str:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         }
 
-        resp = scraper.post(SEARCH_URL, data=payload, headers=headers, proxies=proxies, timeout=25)
+        resp = scraper.post(SEARCH_URL, data=payload, headers=headers, proxies=proxies, timeout=55)
         if resp.status_code == 403: return "ERR_403"
         return resp.text
     except Exception as e:
